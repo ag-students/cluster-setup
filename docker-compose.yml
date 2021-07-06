@@ -1,0 +1,65 @@
+version: '3.7'
+
+x-db-env: &db-env
+  PGPASSWORD_ADMIN: postgres
+  PGPASSWORD_STANDBY: postgres
+  PGPASSWORD_SUPERUSER: postgres
+  POSTGRES_HOST_AUTH_METHOD: trust
+
+x-rails-volumes: &rails-volumes
+  volumes:
+    - bundle-rails-service:/usr/local/bundle:cached
+    - ../rails-service:/app:cached
+
+services:
+  db-rails:
+    image: postgres:10-alpine
+    environment:
+      <<: *db-env
+    volumes:
+      - dbdata-rails:/var/lib/postgresql/data
+
+  db-go:
+    restart: always
+    image: postgres:10-alpine
+    environment:
+      <<: *db-env
+    volumes:
+      - dbdata-go:/var/lib/postgresql/data
+
+  rails-service:
+    <<: *rails-volumes
+    build:
+      context: ../rails-service
+      dockerfile: Dockerfile.dev
+    environment:
+      DATABASE_URL: 'postgresql://postgres@db-rails/rails-service_development'
+      RAILS_LOG_TO_STDOUT: 'true'
+      RAILS_SERVE_STATIC_FILES: 'true'
+      RAILS_ENV: development
+      SECRET_KEY_BASE: ''
+      DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL: 'true'
+      NODE_ENV: development
+    user: '$UID:$GID'
+    command: ash -c "rm -f tmp/pids/server.pid && bundle exec rails s -b 0.0.0.0"
+    depends_on:
+      - db-rails
+    ports:
+      - '8080:3000'
+
+# Some problems with this service
+  communication:
+    build:
+      context: ../support-service/docker
+      dockerfile: communication.Dockerfile
+    volumes:
+      - ../support-service:/communication:cached
+    ports:
+      - 4000:4000
+    depends_on:
+      - db-go
+
+volumes:
+  dbdata-rails:
+  dbdata-go:
+  bundle-rails-service:
